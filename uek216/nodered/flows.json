@@ -1,0 +1,518 @@
+[
+    {
+        "id": "lb0000000000tab1",
+        "type": "tab",
+        "label": "Letterbox",
+        "disabled": false,
+        "info": "Modul 216 – Letterbox"
+    },
+    {
+        "id": "lb00000000mqin01",
+        "type": "mqtt in",
+        "z": "lb0000000000tab1",
+        "name": "Letterbox Status",
+        "topic": "lindenpark/letterbox/+",
+        "qos": "0",
+        "datatype": "json",
+        "broker": "lb00000000broker",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 160,
+        "y": 100,
+        "wires": [
+            [
+                "lb00000000fnst01",
+                "lb00000000trig01",
+                "251196cd141dd603"
+            ]
+        ]
+    },
+    {
+        "id": "lb00000000fnst01",
+        "type": "function",
+        "z": "lb0000000000tab1",
+        "name": "Status / Leerung",
+        "func": "// Topic: lindenpark/letterbox/<firma>\nconst firma = msg.topic.split('/')[2];\nconst p = msg.payload;\n\nif (typeof p !== 'object' || typeof p.mail !== 'boolean') {\n    node.warn('Ungültige Nachricht: ' + JSON.stringify(p));\n    return null;\n}\n\nconst key = 'box_' + firma;\nconst prev = flow.get(key) || {};\nconst now = Date.now();\n\nconst state = {\n    mail: p.mail,\n    distance: p.distance,\n    lastSeen: now,\n    mailSince: prev.mailSince || null,\n    lastEmptied: prev.lastEmptied || null\n};\n\n// Post neu eingeworfen\nif (p.mail && !prev.mail) state.mailSince = now;\n\n// Wechsel Post -> leer = Briefkasten wurde geleert\nif (!p.mail && prev.mail) {\n    state.lastEmptied = now;\n    state.mailSince = null;\n}\n\nflow.set(key, state);\n\nconst t = new Date(now).toLocaleTimeString('de-CH');\nnode.status({\n    fill: p.mail ? 'yellow' : 'green',\n    shape: 'dot',\n    text: (p.mail ? 'Post vorhanden' : 'Leer') + ' · ' + t\n});\n\nmsg.payload = Object.assign({ firma: firma }, state);\nreturn msg;\n",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 400,
+        "y": 100,
+        "wires": [
+            [
+                "lb00000000dbg001",
+                "766c33c1f98cf115"
+            ]
+        ]
+    },
+    {
+        "id": "lb00000000dbg001",
+        "type": "debug",
+        "z": "lb0000000000tab1",
+        "name": "Status",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 620,
+        "y": 100,
+        "wires": []
+    },
+    {
+        "id": "lb00000000trig01",
+        "type": "trigger",
+        "z": "lb0000000000tab1",
+        "name": "30 min ohne Nachricht",
+        "op1": "",
+        "op2": "OFFLINE – keine Nachricht seit 30 min",
+        "op1type": "nul",
+        "op2type": "str",
+        "duration": "30",
+        "extend": true,
+        "overrideDelay": false,
+        "units": "min",
+        "reset": "",
+        "bytopic": "topic",
+        "topic": "topic",
+        "outputs": 1,
+        "x": 420,
+        "y": 220,
+        "wires": [
+            [
+                "lb00000000dbg003",
+                "1f8329874900a9d1"
+            ]
+        ]
+    },
+    {
+        "id": "lb00000000dbg003",
+        "type": "debug",
+        "z": "lb0000000000tab1",
+        "name": "OFFLINE",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 640,
+        "y": 220,
+        "wires": []
+    },
+    {
+        "id": "lb00000000inj001",
+        "type": "inject",
+        "z": "lb0000000000tab1",
+        "name": "12:00 Mo–Fr",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "",
+        "crontab": "00 12 * * 1,2,3,4,5",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payloadType": "date",
+        "x": 150,
+        "y": 340,
+        "wires": [
+            [
+                "lb00000000fndc01"
+            ]
+        ]
+    },
+    {
+        "id": "lb00000000inj002",
+        "type": "inject",
+        "z": "lb0000000000tab1",
+        "name": "Test: jetzt prüfen",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payloadType": "date",
+        "x": 160,
+        "y": 390,
+        "wires": [
+            [
+                "lb00000000fndc01"
+            ]
+        ]
+    },
+    {
+        "id": "lb00000000fndc01",
+        "type": "function",
+        "z": "lb0000000000tab1",
+        "name": "Daily check",
+        "func": "// Prüft alle bekannten Briefkästen\nconst keys = flow.keys().filter(k => k.startsWith('box_'));\nif (keys.length === 0) {\n    node.warn('Noch keine Daten von einem Briefkasten');\n    return null;\n}\n\nconst startOfDay = new Date();\nstartOfDay.setHours(0, 0, 0, 0);\n\nconst out = [];\nlet alarms = 0;\n\nfor (const k of keys) {\n    const s = flow.get(k);\n    const firma = k.slice(4);\n    const emptiedToday = s.lastEmptied && s.lastEmptied >= startOfDay.getTime();\n    const alarm = s.mail === true && !emptiedToday;\n    if (alarm) alarms++;\n\n    out.push({\n        topic: 'lindenpark/letterbox/' + firma + '/alarm',\n        payload: {\n            alarm: alarm,\n            firma: firma,\n            mail: s.mail,\n            mailSince: s.mailSince,\n            lastEmptied: s.lastEmptied,\n            text: alarm ? 'Briefkasten ' + firma + ' wurde heute nicht geleert!' : 'OK'\n        }\n    });\n}\n\nnode.status({\n    fill: alarms ? 'red' : 'green', shape: 'dot',\n    text: alarms ? alarms + ' Alarm(e)' : 'alles OK'\n});\n\nreturn [out];\n",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 380,
+        "y": 360,
+        "wires": [
+            [
+                "lb00000000sw0001"
+            ]
+        ]
+    },
+    {
+        "id": "lb00000000sw0001",
+        "type": "switch",
+        "z": "lb0000000000tab1",
+        "name": "Alarm?",
+        "property": "payload.alarm",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "true"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 1,
+        "x": 550,
+        "y": 360,
+        "wires": [
+            [
+                "lb00000000dbg002",
+                "lb00000000mqout1",
+                "fafb8b03ce287846"
+            ]
+        ]
+    },
+    {
+        "id": "lb00000000dbg002",
+        "type": "debug",
+        "z": "lb0000000000tab1",
+        "name": "ALARM",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 720,
+        "y": 340,
+        "wires": []
+    },
+    {
+        "id": "lb00000000mqout1",
+        "type": "mqtt out",
+        "z": "lb0000000000tab1",
+        "name": "Alarm publizieren",
+        "topic": "",
+        "qos": "0",
+        "retain": "false",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "lb00000000broker",
+        "x": 750,
+        "y": 390,
+        "wires": []
+    },
+    {
+        "id": "251196cd141dd603",
+        "type": "change",
+        "z": "lb0000000000tab1",
+        "name": "online",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "online",
+                "tot": "str"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 390,
+        "y": 280,
+        "wires": [
+            [
+                "1f8329874900a9d1"
+            ]
+        ]
+    },
+    {
+        "id": "1f8329874900a9d1",
+        "type": "ui_text",
+        "z": "lb0000000000tab1",
+        "group": "08b5d420dba6d1fa",
+        "order": 4,
+        "width": 0,
+        "height": 0,
+        "name": "",
+        "label": "Verbindung",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "x": 840,
+        "y": 300,
+        "wires": []
+    },
+    {
+        "id": "f70fe788dc9cfa85",
+        "type": "ui_text",
+        "z": "lb0000000000tab1",
+        "group": "08b5d420dba6d1fa",
+        "order": 2,
+        "width": 0,
+        "height": 0,
+        "name": "",
+        "label": "Post seit",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "x": 840,
+        "y": 260,
+        "wires": []
+    },
+    {
+        "id": "65d8c1e9c09bedc5",
+        "type": "ui_chart",
+        "z": "lb0000000000tab1",
+        "name": "",
+        "group": "08b5d420dba6d1fa",
+        "order": 6,
+        "width": 0,
+        "height": 0,
+        "label": "Distanz (cm)",
+        "chartType": "line",
+        "legend": "false",
+        "xformat": "HH:mm",
+        "interpolate": "step",
+        "nodata": "Noch keine Daten",
+        "dot": true,
+        "ymin": "0",
+        "ymax": "",
+        "removeOlder": "1",
+        "removeOlderPoints": "",
+        "removeOlderUnit": "86400",
+        "cutout": 0,
+        "useOneColor": false,
+        "useUTC": false,
+        "colors": [
+            "#1f77b4",
+            "#aec7e8",
+            "#ff7f0e",
+            "#2ca02c",
+            "#98df8a",
+            "#d62728",
+            "#ff9896",
+            "#9467bd",
+            "#c5b0d5"
+        ],
+        "outputs": 1,
+        "useDifferentColor": false,
+        "x": 850,
+        "y": 220,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "8295122b388373d9",
+        "type": "ui_text",
+        "z": "lb0000000000tab1",
+        "group": "08b5d420dba6d1fa",
+        "order": 3,
+        "width": 0,
+        "height": 0,
+        "name": "",
+        "label": "Letzte Leerung",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "x": 850,
+        "y": 180,
+        "wires": []
+    },
+    {
+        "id": "1bff243a57a1abf1",
+        "type": "ui_text",
+        "z": "lb0000000000tab1",
+        "group": "08b5d420dba6d1fa",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "name": "",
+        "label": "Status",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "x": 840,
+        "y": 140,
+        "wires": []
+    },
+    {
+        "id": "fafb8b03ce287846",
+        "type": "change",
+        "z": "lb0000000000tab1",
+        "name": "Alarm-Text",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "payload.text",
+                "tot": "msg"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 720,
+        "y": 460,
+        "wires": [
+            [
+                "af11fe0b1bf270a5"
+            ]
+        ]
+    },
+    {
+        "id": "af11fe0b1bf270a5",
+        "type": "ui_toast",
+        "z": "lb0000000000tab1",
+        "position": "top right",
+        "displayTime": "15",
+        "highlight": "red",
+        "sendall": true,
+        "outputs": 0,
+        "ok": "OK",
+        "cancel": "",
+        "raw": false,
+        "topic": "ALARM",
+        "name": "Alarm-Popup",
+        "x": 910,
+        "y": 460,
+        "wires": []
+    },
+    {
+        "id": "766c33c1f98cf115",
+        "type": "function",
+        "z": "lb0000000000tab1",
+        "name": "Für Dashboard",
+        "func": "const s = msg.payload;\nconst fmt = t => t ? new Date(t).toLocaleString('de-CH') : '–';\n\nreturn [\n    { payload: s.mail ? 'Post vorhanden' : 'Leer' },   // 1: Status\n    { payload: fmt(s.lastEmptied) },                    // 2: letzte Leerung\n    { payload: s.distance < 0 ? 0 : s.distance },       // 3: Distanz\n    { payload: s.mailSince ? fmt(s.mailSince) : '–' }   // 4: Post seit\n];\n",
+        "outputs": 4,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 620,
+        "y": 160,
+        "wires": [
+            [
+                "1bff243a57a1abf1"
+            ],
+            [
+                "8295122b388373d9"
+            ],
+            [
+                "65d8c1e9c09bedc5"
+            ],
+            [
+                "f70fe788dc9cfa85"
+            ]
+        ]
+    },
+    {
+        "id": "c19f6ee914ef4d7d",
+        "type": "ui_button",
+        "z": "lb0000000000tab1",
+        "name": "",
+        "group": "08b5d420dba6d1fa",
+        "order": 5,
+        "width": 0,
+        "height": 0,
+        "passthru": false,
+        "label": "Jetzt prüfen",
+        "tooltip": "Tägliche Kontrolle sofort ausführen",
+        "color": "",
+        "bgcolor": "",
+        "icon": "",
+        "payload": "",
+        "payloadType": "date",
+        "topic": "",
+        "topicType": "str",
+        "x": 150,
+        "y": 440,
+        "wires": [
+            [
+                "lb00000000fndc01"
+            ]
+        ]
+    },
+    {
+        "id": "lb00000000broker",
+        "type": "mqtt-broker",
+        "name": "Lindenpark Broker",
+        "broker": "164.92.239.169",
+        "port": "1883",
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": "4",
+        "keepalive": "60",
+        "cleansession": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeQos": "0",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willPayload": "",
+        "willMsg": {},
+        "sessionExpiry": ""
+    },
+    {
+        "id": "08b5d420dba6d1fa",
+        "type": "ui_group",
+        "name": "Briefkasten Noser Young",
+        "tab": "beed4b5df3bccb75",
+        "order": 1,
+        "disp": true,
+        "width": "6",
+        "collapse": false
+    },
+    {
+        "id": "beed4b5df3bccb75",
+        "type": "ui_tab",
+        "name": "Letterbox",
+        "icon": "dashboard",
+        "order": 1,
+        "disabled": false,
+        "hidden": false
+    }
+]
